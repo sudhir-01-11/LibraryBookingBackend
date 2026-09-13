@@ -1,0 +1,22 @@
+CREATE TABLE payments (
+    payment_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    booking_id BIGINT,
+    paid_amount NUMERIC(10, 2) NOT NULL,
+    refund_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    cancellation_fee NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    status payment_status NOT NULL DEFAULT 'PENDING',
+    gateway_reference VARCHAR(255),
+    refund_reference VARCHAR(255),
+    idempotency_key VARCHAR(255) NOT NULL,
+    initiated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ,
+    refunded_at TIMESTAMPTZ,
+    CONSTRAINT fk_payments_booking FOREIGN KEY (booking_id) REFERENCES bookings (booking_id) ON DELETE RESTRICT,
+    CONSTRAINT uq_payments_gateway_reference UNIQUE (gateway_reference),
+    CONSTRAINT uq_payments_refund_reference UNIQUE (refund_reference),
+    CONSTRAINT uq_payments_idempotency_key UNIQUE (idempotency_key),
+    CONSTRAINT chk_payments_paid_amount CHECK (paid_amount > 0),
+    CONSTRAINT chk_payments_refund_amount CHECK (refund_amount >= 0 AND refund_amount <= paid_amount),
+    CONSTRAINT chk_payments_cancellation_fee CHECK (cancellation_fee >= 0 AND cancellation_fee <= paid_amount),
+    CONSTRAINT chk_payments_refund_total CHECK (refund_amount + cancellation_fee <= paid_amount)
+);
