@@ -5,13 +5,17 @@ CREATE TYPE booking_source AS ENUM ('DIRECT', 'WAITLIST');
 CREATE TYPE payment_status AS ENUM ('PENDING', 'SUCCESS', 'FAILED', 'REFUND_PENDING', 'PARTIALLY_REFUNDED', 'REFUNDED');
 CREATE TYPE waiting_list_status AS ENUM ('PENDING_PAYMENT', 'ACTIVE', 'ASSIGNED', 'CANCELLED', 'EXPIRED', 'REFUND_PENDING', 'REFUNDED');
 
+CREATE TYPE auth_provider AS ENUM ('LOCAL', 'GOOGLE');
+
 CREATE TABLE users (
     user_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     first_name VARCHAR(100) NOT NULL,
     middle_name VARCHAR(100),
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL,
-    phone VARCHAR(20) NOT NULL,
+    password_hash VARCHAR(255),
+    phone VARCHAR(20),
+    auth_provider auth_provider NOT NULL DEFAULT 'LOCAL',
     fine_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
     membership_status membership_status NOT NULL DEFAULT 'ACTIVE',
     membership_expiry_date DATE,
