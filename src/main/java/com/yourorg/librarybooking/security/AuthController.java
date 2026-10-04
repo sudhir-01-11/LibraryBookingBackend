@@ -112,9 +112,21 @@ public class AuthController {
         }
     }
 
+    @org.springframework.web.bind.annotation.GetMapping("/me")
+    public ResponseEntity<UserResponse> getCurrentUser(@org.springframework.security.core.annotation.AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(new UserResponse(
+            user.getId(),
+            user.getFirstName(),
+            user.getLastName(),
+            user.getEmail(),
+            user.getRole().name()
+        ));
+    }
+
     // DTOs
     public record RegisterRequest(String firstName, String lastName, String email, String phone, String password) {}
     public record LoginRequest(String email, String password) {}
     public record OAuthTokenRequest(String idToken) {}
     public record AuthResponse(String accessToken, String refreshToken) {}
+    public record UserResponse(Long id, String firstName, String lastName, String email, String role) {}
 }

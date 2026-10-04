@@ -40,6 +40,12 @@ public class PaymentService {
             throw new IllegalStateException("Booking is not in HELD state");
         }
 
+        // Idempotency Check: If they already clicked pay and generated a pending order, reuse it!
+        java.util.Optional<Payment> existingPending = paymentRepository.findFirstByBookingIdAndStatusOrderByIdDesc(bookingId, Payment.PaymentStatus.PENDING);
+        if (existingPending.isPresent()) {
+            return existingPending.get();
+        }
+
         BigDecimal amountInRupees = booking.getFareSnapshot();
         // Razorpay expects amount in paise (multiply by 100)
         int amountInPaise = amountInRupees.multiply(BigDecimal.valueOf(100)).intValue();
