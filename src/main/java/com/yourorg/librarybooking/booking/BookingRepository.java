@@ -24,4 +24,6 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("startTime") ZonedDateTime startTime,
             @Param("endTime") ZonedDateTime endTime
     );
+
+    List<Booking> findByUserId(Long userId);
 }

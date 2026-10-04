@@ -90,4 +90,7 @@ public class BookingService {
             throw new IllegalArgumentException("Maximum booking duration is 3 hours.");
         }
     }
+    public List<Booking> getUserBookings(Long userId) {
+        return bookingRepository.findByUserId(userId);
+    }
 }

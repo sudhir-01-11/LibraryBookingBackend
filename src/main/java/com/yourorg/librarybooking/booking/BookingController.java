@@ -11,6 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/bookings")
+@CrossOrigin(origins = "*")
 public class BookingController {
 
     private final BookingService bookingService;
@@ -22,8 +23,8 @@ public class BookingController {
     @GetMapping("/availability")
     public ResponseEntity<AvailabilityResponse> checkAvailability(
             @RequestParam Long zoneId,
-            @RequestParam ZonedDateTime startTime,
-            @RequestParam ZonedDateTime endTime) {
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) ZonedDateTime startTime,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) ZonedDateTime endTime) {
         
         List<Long> availableSeatIds = bookingService.getAvailableSeats(zoneId, startTime, endTime);
         return ResponseEntity.ok(new AvailabilityResponse(zoneId, startTime, endTime, availableSeatIds));
@@ -52,8 +53,26 @@ public class BookingController {
         ));
     }
 
+    @GetMapping("/my-bookings")
+    public ResponseEntity<List<MyBookingResponse>> getMyBookings(@AuthenticationPrincipal User user) {
+        List<Booking> bookings = bookingService.getUserBookings(user.getId());
+        List<MyBookingResponse> response = bookings.stream()
+                .map(b -> new MyBookingResponse(
+                        b.getId(),
+                        b.getZoneId(),
+                        b.getSeatId(),
+                        b.getTimeRange().lower(),
+                        b.getTimeRange().upper(),
+                        b.getStatus().name(),
+                        b.getFareSnapshot()
+                ))
+                .toList();
+        return ResponseEntity.ok(response);
+    }
+
     // Record DTOs mapped into the controller file for brevity (alternatively put in dto package)
     public record BookingRequest(Long zoneId, Long seatId, ZonedDateTime startTime, ZonedDateTime endTime) {}
     public record BookingResponse(Long bookingId, Long seatId, String status, java.math.BigDecimal fare, ZonedDateTime holdExpiresAt) {}
+    public record MyBookingResponse(Long bookingId, Long zoneId, Long seatId, ZonedDateTime startTime, ZonedDateTime endTime, String status, java.math.BigDecimal fare) {}
     public record AvailabilityResponse(Long zoneId, ZonedDateTime startTime, ZonedDateTime endTime, List<Long> availableSeatIds) {}
 }
