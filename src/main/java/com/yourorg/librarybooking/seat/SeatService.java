@@ -16,12 +16,12 @@ public class SeatService {
     }
 
     public List<SeatResponse> getSeatsByZone(Long zoneId) {
-        return seatRepository.findByZoneIdAndIsActiveTrue(zoneId).stream()
+        return seatRepository.findByZoneIdAndIsFunctionalTrue(zoneId).stream()
                 .map(seat -> new SeatResponse(
                         seat.getId(),
-                        seat.getSeatNumber(),
+                        String.valueOf(seat.getId()), // Since there's no seat_number, we use ID as string
                         seat.getZone().getId(),
-                        seat.isActive()
+                        seat.isFunctional()
                 ))
                 .collect(Collectors.toList());
     }

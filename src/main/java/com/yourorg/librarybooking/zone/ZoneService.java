@@ -20,10 +20,10 @@ public class ZoneService {
                 .map(zone -> new ZoneResponse(
                         zone.getId(),
                         zone.getName(),
-                        zone.getDescription(),
+                        "Standard " + zone.getName() + " for studying.", // Fallback description
                         zone.getCapacity(),
                         zone.getPricePerHour(),
-                        zone.getImageUrl()
+                        "https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&q=80&w=800" // Fallback image
                 ))
                 .collect(Collectors.toList());
     }

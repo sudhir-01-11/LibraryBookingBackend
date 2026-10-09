@@ -70,6 +70,22 @@ public class BookingController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<MyBookingResponse> cancelBooking(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User user) {
+        Booking booking = bookingService.cancelBooking(id, user.getId());
+        return ResponseEntity.ok(new MyBookingResponse(
+                booking.getId(),
+                booking.getZoneId(),
+                booking.getSeatId(),
+                booking.getTimeRange().lower(),
+                booking.getTimeRange().upper(),
+                booking.getStatus().name(),
+                booking.getFareSnapshot()
+        ));
+    }
+
     // Record DTOs mapped into the controller file for brevity (alternatively put in dto package)
     public record BookingRequest(Long zoneId, Long seatId, ZonedDateTime startTime, ZonedDateTime endTime) {}
     public record BookingResponse(Long bookingId, Long seatId, String status, java.math.BigDecimal fare, ZonedDateTime holdExpiresAt) {}

@@ -100,4 +100,36 @@ public class PaymentService {
             throw new RuntimeException("Error verifying webhook", e);
         }
     }
+
+    @Transactional
+    public void processRefund(Long bookingId) throws RazorpayException {
+        java.util.Optional<Payment> existingPaymentOpt = paymentRepository.findFirstByBookingIdAndStatusOrderByIdDesc(bookingId, Payment.PaymentStatus.SUCCESS);
+        if (existingPaymentOpt.isEmpty()) {
+            return; // No successful payment to refund
+        }
+
+        Payment payment = existingPaymentOpt.get();
+        if (payment.getRefundReference() != null) {
+            return; // Already refunded
+        }
+
+        // Fetch payments for the order to get the pay_XXX ID
+        java.util.List<com.razorpay.Payment> rzpPayments = razorpayClient.orders.fetchPayments(payment.getGatewayReference());
+        if (rzpPayments == null || rzpPayments.isEmpty()) {
+            throw new IllegalStateException("No captured payments found for this order in Razorpay.");
+        }
+
+        String payId = rzpPayments.get(0).get("id");
+        
+        // Issue refund
+        JSONObject refundRequest = new JSONObject();
+        refundRequest.put("amount", payment.getPaidAmount().multiply(BigDecimal.valueOf(100)).intValue());
+        
+        com.razorpay.Refund refund = razorpayClient.payments.refund(payId, refundRequest);
+        
+        payment.setRefundReference(refund.get("id"));
+        payment.setRefundAmount(payment.getPaidAmount());
+        payment.setRefundedAt(ZonedDateTime.now());
+        paymentRepository.save(payment);
+    }
 }

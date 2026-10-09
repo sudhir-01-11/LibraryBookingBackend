@@ -12,16 +12,20 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
 
+import com.yourorg.librarybooking.payment.PaymentService;
+
 @Service
 public class BookingService {
 
     private final BookingRepository bookingRepository;
+    private final PaymentService paymentService;
 
     @Value("${application.booking.hold-duration-minutes:5}")
     private int holdDurationMinutes;
 
-    public BookingService(BookingRepository bookingRepository) {
+    public BookingService(BookingRepository bookingRepository, PaymentService paymentService) {
         this.bookingRepository = bookingRepository;
+        this.paymentService = paymentService;
     }
 
     @Transactional(readOnly = true)
@@ -92,5 +96,34 @@ public class BookingService {
     }
     public List<Booking> getUserBookings(Long userId) {
         return bookingRepository.findByUserId(userId);
+    }
+
+    @Transactional
+    public Booking cancelBooking(Long bookingId, Long userId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalArgumentException("Booking not found."));
+
+        if (!booking.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("Unauthorized to cancel this booking.");
+        }
+
+        if (booking.getTimeRange().lower().isBefore(ZonedDateTime.now())) {
+            throw new IllegalArgumentException("Cannot cancel a booking that has already started.");
+        }
+
+        if (booking.getStatus() == Booking.BookingStatus.CANCELLED) {
+            throw new IllegalArgumentException("Booking is already cancelled.");
+        }
+
+        if (booking.getStatus() == Booking.BookingStatus.CONFIRMED) {
+            try {
+                paymentService.processRefund(bookingId);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to process refund: " + e.getMessage(), e);
+            }
+        }
+
+        booking.setStatus(Booking.BookingStatus.CANCELLED);
+        return bookingRepository.save(booking);
     }
 }
