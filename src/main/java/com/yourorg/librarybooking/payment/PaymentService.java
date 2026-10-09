@@ -21,14 +21,16 @@ public class PaymentService {
     private final RazorpayClient razorpayClient;
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
+    private final com.yourorg.librarybooking.waitlist.WaitingListRepository waitingListRepository;
 
     @Value("${razorpay.webhook.secret}")
     private String webhookSecret;
 
-    public PaymentService(RazorpayClient razorpayClient, PaymentRepository paymentRepository, BookingRepository bookingRepository) {
+    public PaymentService(RazorpayClient razorpayClient, PaymentRepository paymentRepository, BookingRepository bookingRepository, com.yourorg.librarybooking.waitlist.WaitingListRepository waitingListRepository) {
         this.razorpayClient = razorpayClient;
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
+        this.waitingListRepository = waitingListRepository;
     }
 
     @Transactional
@@ -69,6 +71,42 @@ public class PaymentService {
     }
 
     @Transactional
+    public Payment createWaitlistPaymentOrder(Long waitlistId) throws RazorpayException {
+        com.yourorg.librarybooking.waitlist.WaitingList waitlist = waitingListRepository.findById(waitlistId)
+                .orElseThrow(() -> new IllegalArgumentException("Waitlist not found"));
+
+        if (waitlist.getStatus() != com.yourorg.librarybooking.waitlist.WaitingList.Status.PENDING_PAYMENT) {
+            throw new IllegalStateException("Waitlist is not in PENDING_PAYMENT state");
+        }
+
+        long hours = java.time.Duration.between(waitlist.getRequestedTimeRange().lower(), waitlist.getRequestedTimeRange().upper()).toHours();
+        if (hours == 0) hours = 1;
+        BigDecimal amountInRupees = BigDecimal.valueOf(hours * 10);
+        int amountInPaise = amountInRupees.multiply(BigDecimal.valueOf(100)).intValue();
+
+        JSONObject orderRequest = new JSONObject();
+        orderRequest.put("amount", amountInPaise);
+        orderRequest.put("currency", "INR");
+        orderRequest.put("receipt", "rcpt_waitlist_" + waitlistId);
+
+        Order razorpayOrder = razorpayClient.orders.create(orderRequest);
+        String orderId = razorpayOrder.get("id");
+
+        Payment payment = new Payment();
+        payment.setBooking(null); // No booking yet
+        payment.setPaidAmount(amountInRupees);
+        payment.setGatewayReference(orderId);
+        payment.setIdempotencyKey(UUID.randomUUID().toString());
+        payment.setStatus(Payment.PaymentStatus.PENDING);
+
+        Payment savedPayment = paymentRepository.save(payment);
+        waitlist.setPaymentId(savedPayment.getId());
+        waitingListRepository.save(waitlist);
+
+        return savedPayment;
+    }
+
+    @Transactional
     public void processWebhook(String payload, String signature) {
         try {
             boolean isValid = Utils.verifyWebhookSignature(payload, signature, webhookSecret);
@@ -91,9 +129,17 @@ public class PaymentService {
                     payment.setCompletedAt(ZonedDateTime.now());
                     paymentRepository.save(payment);
 
-                    Booking booking = payment.getBooking();
-                    booking.setStatus(Booking.BookingStatus.CONFIRMED);
-                    bookingRepository.save(booking);
+                    if (payment.getBooking() != null) {
+                        Booking booking = payment.getBooking();
+                        booking.setStatus(Booking.BookingStatus.CONFIRMED);
+                        bookingRepository.save(booking);
+                    } else {
+                        // Check if it's a waitlist
+                        waitingListRepository.findByPaymentId(payment.getId()).ifPresent(waitlist -> {
+                            waitlist.setStatus(com.yourorg.librarybooking.waitlist.WaitingList.Status.ACTIVE);
+                            waitingListRepository.save(waitlist);
+                        });
+                    }
                 }
             }
         } catch (RazorpayException e) {
@@ -122,6 +168,29 @@ public class PaymentService {
         String payId = rzpPayments.get(0).get("id");
         
         // Issue refund
+        JSONObject refundRequest = new JSONObject();
+        refundRequest.put("amount", payment.getPaidAmount().multiply(BigDecimal.valueOf(100)).intValue());
+        
+        com.razorpay.Refund refund = razorpayClient.payments.refund(payId, refundRequest);
+        
+        payment.setRefundReference(refund.get("id"));
+        payment.setRefundAmount(payment.getPaidAmount());
+        payment.setRefundedAt(ZonedDateTime.now());
+        paymentRepository.save(payment);
+    }
+
+    @Transactional
+    public void processWaitlistRefund(com.yourorg.librarybooking.waitlist.WaitingList waitlist) throws RazorpayException {
+        if (waitlist.getPaymentId() == null) return;
+        
+        Payment payment = paymentRepository.findById(waitlist.getPaymentId()).orElse(null);
+        if (payment == null || payment.getRefundReference() != null) return;
+        
+        java.util.List<com.razorpay.Payment> rzpPayments = razorpayClient.orders.fetchPayments(payment.getGatewayReference());
+        if (rzpPayments == null || rzpPayments.isEmpty()) return;
+        
+        String payId = rzpPayments.get(0).get("id");
+        
         JSONObject refundRequest = new JSONObject();
         refundRequest.put("amount", payment.getPaidAmount().multiply(BigDecimal.valueOf(100)).intValue());
         

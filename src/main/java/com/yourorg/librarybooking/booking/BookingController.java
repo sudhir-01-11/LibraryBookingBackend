@@ -56,7 +56,7 @@ public class BookingController {
     @GetMapping("/my-bookings")
     public ResponseEntity<List<MyBookingResponse>> getMyBookings(@AuthenticationPrincipal User user) {
         List<Booking> bookings = bookingService.getUserBookings(user.getId());
-        List<MyBookingResponse> response = bookings.stream()
+        List<MyBookingResponse> response = new java.util.ArrayList<>(bookings.stream()
                 .map(b -> new MyBookingResponse(
                         b.getId(),
                         b.getZoneId(),
@@ -66,7 +66,49 @@ public class BookingController {
                         b.getStatus().name(),
                         b.getFareSnapshot()
                 ))
-                .toList();
+                .toList());
+
+        // Also fetch Waitlists
+        com.yourorg.librarybooking.waitlist.WaitlistService waitlistService = 
+            org.springframework.web.context.support.WebApplicationContextUtils.getWebApplicationContext(
+                ((org.springframework.web.context.request.ServletRequestAttributes) org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()).getRequest().getServletContext()
+            ).getBean(com.yourorg.librarybooking.waitlist.WaitlistService.class);
+
+        com.yourorg.librarybooking.waitlist.WaitingListRepository waitingListRepository = 
+            org.springframework.web.context.support.WebApplicationContextUtils.getWebApplicationContext(
+                ((org.springframework.web.context.request.ServletRequestAttributes) org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()).getRequest().getServletContext()
+            ).getBean(com.yourorg.librarybooking.waitlist.WaitingListRepository.class);
+
+        List<com.yourorg.librarybooking.waitlist.WaitingList> waitlists = waitlistService.getUserWaitlists(user.getId());
+        
+        for (com.yourorg.librarybooking.waitlist.WaitingList w : waitlists) {
+            // Do not show ASSIGNED waitlists since the Booking itself will be displayed
+            if (w.getStatus() == com.yourorg.librarybooking.waitlist.WaitingList.Status.ASSIGNED) {
+                continue;
+            }
+
+            String statusString = "WAITLIST";
+            if (w.getStatus() == com.yourorg.librarybooking.waitlist.WaitingList.Status.ACTIVE) {
+                int position = waitingListRepository.getQueuePosition(w.getZoneId(), w.getRequestedTimeRange().lower(), w.getRequestedTimeRange().upper(), w.getQueuedAt());
+                statusString = "WAITLIST #" + position;
+            } else {
+                statusString = "WAITLIST (" + w.getStatus().name() + ")";
+            }
+
+            response.add(new MyBookingResponse(
+                    w.getId(),
+                    w.getZoneId(),
+                    null, // No seat id yet
+                    w.getRequestedTimeRange().lower(),
+                    w.getRequestedTimeRange().upper(),
+                    statusString,
+                    java.math.BigDecimal.ZERO // Or pending fare
+            ));
+        }
+
+        // Sort by start time descending
+        response.sort((a, b) -> b.startTime().compareTo(a.startTime()));
+
         return ResponseEntity.ok(response);
     }
 

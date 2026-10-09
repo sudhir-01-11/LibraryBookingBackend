@@ -38,6 +38,27 @@ public class PaymentController {
         }
     }
 
+    @PostMapping("/create-waitlist-order")
+    public ResponseEntity<?> createWaitlistOrder(@RequestBody Map<String, Long> payload) {
+        Long waitlistId = payload.get("waitlistId");
+        if (waitlistId == null) {
+            return ResponseEntity.badRequest().body("waitlistId is required");
+        }
+
+        try {
+            Payment payment = paymentService.createWaitlistPaymentOrder(waitlistId);
+            return ResponseEntity.ok(Map.of(
+                    "paymentId", payment.getId(),
+                    "razorpayOrderId", payment.getGatewayReference(),
+                    "amount", payment.getPaidAmount()
+            ));
+        } catch (RazorpayException e) {
+            return ResponseEntity.internalServerError().body("Error from Razorpay: " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @PostMapping("/webhook")
     public ResponseEntity<String> handleWebhook(
             @RequestBody String payload,
